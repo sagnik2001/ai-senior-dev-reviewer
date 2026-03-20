@@ -1,7 +1,2 @@
-# AI Reviewer — generated files (don't commit these)
 .ai-reviewer/review-log.jsonl
 .ai-reviewer/dashboard.html
-
-# DO commit these — they hold the team's shared memory:
-# .ai-reviewer/patterns.json
-# .ai-reviewer/codebase-context.json
