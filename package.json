@@ -1,0 +1,23 @@
+{
+  "name": "ai-senior-dev-reviewer",
+  "version": "1.0.0",
+  "description": "Self-improving AI code reviewer that thinks like a senior dev. Catches crashes, ANRs, security holes, perf issues, and bad patterns before they hit production.",
+  "main": "src/index.js",
+  "bin": {
+    "ai-reviewer": "./bin/cli.js"
+  },
+  "scripts": {
+    "review": "node src/index.js",
+    "install-hook": "node bin/install.js",
+    "uninstall-hook": "node bin/uninstall.js",
+    "dashboard": "node bin/dashboard.js",
+    "test": "node src/index.js --dry-run"
+  },
+  "keywords": ["react", "react-native", "code-review", "git-hook", "ai", "security"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {}
+}
