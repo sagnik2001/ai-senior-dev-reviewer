@@ -1,7 +1,7 @@
 {
-  "name": "ai-senior-dev-reviewer",
-  "version": "1.0.0",
-  "description": "Self-improving AI code reviewer that thinks like a senior dev. Catches crashes, ANRs, security holes, perf issues, and bad patterns before they hit production.",
+  "name": "ai-commit-reviewer",
+  "version": "1.0.3",
+  "description": "Self-improving AI code reviewer for React, React Native and Next.js. Runs on every git commit. Catches crashes, ANRs, security holes, hydration errors, and bad patterns before they hit production.",
   "main": "src/index.js",
   "bin": {
     "ai-reviewer": "bin/cli.js"
@@ -11,18 +11,46 @@
     "install-hook": "node bin/install.js",
     "uninstall-hook": "node bin/uninstall.js",
     "dashboard": "node bin/dashboard.js",
+    "status": "node bin/cli.js status",
     "test": "node src/index.js --dry-run"
   },
   "keywords": [
     "react",
     "react-native",
+    "nextjs",
+    "next.js",
     "code-review",
+    "ai-code-review",
     "git-hook",
+    "pre-commit",
+    "pre-commit-hook",
     "ai",
-    "security"
+    "openai",
+    "anthropic",
+    "gemini",
+    "security",
+    "crash-detection",
+    "ANR",
+    "hydration",
+    "senior-dev",
+    "linter",
+    "static-analysis",
+    "commit-hook",
+    "self-improving",
+    "mobile",
+    "typescript",
+    "javascript"
   ],
-  "author": "",
+  "author": "Sagnik Pal",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sagnik2001/ai-senior-dev-reviewer.git"
+  },
+  "homepage": "https://github.com/sagnik2001/ai-senior-dev-reviewer#readme",
+  "bugs": {
+    "url": "https://github.com/sagnik2001/ai-senior-dev-reviewer/issues"
+  },
   "engines": {
     "node": ">=16.0.0"
   },

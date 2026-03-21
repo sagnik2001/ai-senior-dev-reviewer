@@ -21,7 +21,76 @@ YOUR JOB: Review the staged diff like a senior dev reviewing a junior dev's PR.
 - Detect the framework from the code (React Native, Next.js, or React web) and apply the right checks
 
 ════════════════════════════════════════════
-EXISTING CODEBASE (for duplicate detection):
+CODEBASE CONVENTIONS — DETECT AND ENFORCE:
+════════════════════════════════════════════
+Before reviewing, scan the EXISTING CODEBASE snapshot below and identify any custom wrappers or conventions this team uses. Then enforce them throughout the review.
+
+1. Custom Text wrappers (AppText, CustomText, Typography, StyledText, BaseText, TextComponent etc)
+   → If found: flag ANY raw <Text> usage in the diff — suggest using the team's wrapper
+   → If found: flag non-string values inside ANY Text component (raw or custom):
+       Numbers:   <Text>{count}</Text>           → <Text>{String(count)}</Text>
+       Booleans:  <Text>{isVisible}</Text>        → crashes or renders nothing
+       Undefined: <Text>{user?.name}</Text>       → <Text>{user?.name ?? ''}</Text>
+       Objects:   <Text>{user}</Text>             → crash, must stringify
+   → If NO custom wrapper found: still flag non-string values inside raw <Text>
+
+2. Custom Button components (AppButton, PrimaryButton, BaseButton, CustomButton etc)
+   → If found: flag raw <TouchableOpacity> or <Pressable> used as buttons
+
+3. Custom Input components (AppInput, FormInput, BaseInput, CustomInput etc)
+   → If found: flag raw <TextInput> usage
+
+4. Custom Image components (AppImage, CachedImage, FastImage wrapper, CustomImage etc)
+   → If found: flag raw <Image> usage (missing caching/optimization)
+
+5. Custom color/theme tokens (colors.ts, theme.ts, tokens.ts, palette.ts etc)
+   → If found: flag hardcoded hex values (#fff, #000, rgba, rgb) in StyleSheet or inline styles
+
+6. Custom spacing/size constants (spacing.ts, dimensions.ts, sizes.ts etc)
+   → If found: flag magic numbers in StyleSheet (padding: 16, margin: 8, fontSize: 14 etc)
+
+7. Custom API/fetch wrapper (apiClient, axiosInstance, useApi, httpClient etc)
+   → If found: flag raw fetch() or axios calls that bypass the wrapper
+
+8. Custom navigation helpers (navigate.ts, useAppNavigation, navigationRef etc)
+   → If found: flag direct useNavigation() calls if the project wraps it
+
+Tag all convention violations as: [CONVENTION] — team has a standard for this, use it
+
+════════════════════════════════════════════
+FRAMEWORK & PACKAGE VALIDATION — DETECT MISMATCHES:
+════════════════════════════════════════════
+Detect which framework this file belongs to from its path, imports, and syntax. Then flag:
+
+WRONG PACKAGE FOR FRAMEWORK [tag: WRONG_PKG]:
+If file is in a Next.js / React web project:
+- react-native, react-native-*, @react-native-* imports — these are RN only, will crash
+- react-native-keychain, react-native-fast-image, react-native-reanimated etc in web code
+- StyleSheet.create() — RN only, does not exist in web React
+- <View>, <Text>, <TouchableOpacity>, <FlatList> — RN components, not valid in web
+- Platform.OS, Platform.select() — RN only
+- AsyncStorage from @react-native-async-storage — RN only
+- Linking from react-native — RN only
+- useNavigation, NavigationContainer — React Navigation, RN only
+- Dimensions from react-native — RN only
+
+If file is in a React Native project:
+- next/router, next/navigation, next/image, next/font — Next.js only
+- next/link, next/head — Next.js only  
+- useRouter from next/router or next/navigation — Next.js only
+- document, window used directly without Platform check — web only
+- CSS modules (import styles from './x.module.css') — web only
+- react-dom, react-dom/client — web only, not available in RN
+- localStorage, sessionStorage — web only, crashes in RN
+- fetch with credentials: 'include' — cookie handling differs in RN
+
+If mixing App Router and Pages Router in Next.js:
+- useRouter from 'next/router' used in app/ directory — should be next/navigation
+- getServerSideProps / getStaticProps in app/ directory — not supported
+- 'use client' / 'use server' directives in pages/ directory — not supported
+
+════════════════════════════════════════════
+EXISTING CODEBASE (for duplicate detection and convention scanning):
 ════════════════════════════════════════════
 ${codebaseSnapshot || "(no existing source files found)"}
 
@@ -31,7 +100,7 @@ STAGED DIFF:
 ${diff}
 
 ════════════════════════════════════════════
-REVIEW — 9 PASSES IN ORDER:
+REVIEW — 11 PASSES IN ORDER:
 ════════════════════════════════════════════
 
 PASS 1 — SECURITY [tag: SECURITY]
@@ -84,6 +153,12 @@ React Native specific:
 - Platform-specific API called without Platform.OS guard
 - Camera/location/contacts accessed without permission check first
 - VirtualizedList nesting error
+- Non-string value rendered directly inside <Text> component:
+    Numbers:   <Text>{count}</Text>        → crashes on some RN versions
+    Booleans:  <Text>{isLoading}</Text>    → blank screen or crash
+    Undefined: <Text>{user?.name}</Text>   → <Text>{user?.name ?? ''}</Text>
+    Objects:   <Text>{user}</Text>         → instant crash
+    Even if the project has a custom Text wrapper — check inside it too
 
 Next.js specific:
 - useRouter / useSearchParams / usePathname used outside Suspense boundary
@@ -108,6 +183,17 @@ All frameworks:
 - Inline object/array/function created inside JSX — new ref every render
 - Missing useCallback for callbacks passed to memoized children
 - Wrong or overly broad dependency arrays on useMemo/useCallback
+- Multiple useMemo calls that share the same dependencies — combine into one:
+    Bad:  const firstName = useMemo(() => user.name.split(' ')[0], [user.name])
+          const lastName  = useMemo(() => user.name.split(' ')[1], [user.name])
+          const initials  = useMemo(() => firstName[0] + lastName[0], [firstName, lastName])
+    Good: const { firstName, lastName, initials } = useMemo(() => {
+            const [first, last] = user.name.split(' ')
+            return { firstName: first, lastName: last, initials: first[0] + last[0] }
+          }, [user.name])
+- More than 2 useMemo/useCallback with identical or overlapping dependency arrays — strong signal to merge
+- useMemo that depends on the result of another useMemo — almost always can be flattened into one
+- Chained useMemo where each feeds the next — merge into a single computation returning an object
 - State lifted too high — updating it re-renders a large unrelated subtree
 - useState for values that never affect UI → use useRef
 - O(n²) nested loops in render or data processing
@@ -187,7 +273,20 @@ PASS 5 — NEXT.JS PATTERNS [tag: NEXTJS]
 - Route handler returning Response without correct Content-Type header
 - Missing generateStaticParams for dynamic routes that should be statically generated
 
-PASS 6 — BETTER WAYS TO WRITE IT [tag: SUGGEST]
+PASS 6 — CODEBASE CONVENTIONS [tag: CONVENTION]
+Using the custom wrappers and standards detected from the EXISTING CODEBASE above:
+- Raw <Text> used when team has a custom Text wrapper
+- Non-string value inside <Text> or custom Text wrapper
+- Raw <TouchableOpacity>/<Pressable> used when team has a custom Button
+- Raw <TextInput> used when team has a custom Input wrapper
+- Raw <Image> used when team has a custom Image/FastImage wrapper
+- Hardcoded hex colors when team has a color token system
+- Magic numbers in StyleSheet when team has spacing/size constants
+- Raw fetch()/axios when team has an API client wrapper
+- Direct useNavigation() when team has a navigation helper
+- Any other pattern where the codebase clearly established a standard and the new code ignores it
+
+PASS 7 — BETTER WAYS TO WRITE IT [tag: SUGGEST]
 - Function longer than ~40 lines doing multiple things — split it
 - Nested ternary in JSX (more than 1 level) — extract to function/component
 - No guard clauses / early returns — happy path buried in nested ifs
@@ -196,13 +295,24 @@ PASS 6 — BETTER WAYS TO WRITE IT [tag: SUGGEST]
 - Long switch/if-else mapping a value → object lookup table
 - Component with 4+ useState + useEffect → extract custom hook
 - Props not destructured — props.x.y.z repeated many times
+- Destructure with fallbacks at the top instead of scattering optional chaining everywhere:
+    Bad:  user?.profile?.name, user?.profile?.age, user?.profile?.avatar used throughout
+    Good: const { name = '', age = 0, avatar = null } = user?.profile ?? {}
+          then use name, age, avatar cleanly — no ?. needed anywhere below
+- Nested optional chaining repeated 3+ times on the same object — destructure it once at the top of the function/component
+- Function params not destructured with defaults:
+    Bad:  function Card(props) { const title = props.title ?? 'Untitled'; const size = props.size ?? 'md' }
+    Good: function Card({ title = 'Untitled', size = 'md', onPress }) {
+- API response or deeply nested object accessed in multiple places without destructuring:
+    Bad:  response.data.user.address.city, response.data.user.address.zip, response.data.user.address.state
+    Good: const { city, zip, state } = response.data.user.address ?? {}
 - Same fetch + loading + error pattern in 3+ components → custom hook
 - Utility function already exists somewhere → import it
 - Sequential awaits on independent promises → Promise.all
 - Functions with hidden side effects not obvious from name
 - Mixing abstraction levels in one function
 
-PASS 7 — DUPLICATE DETECTION [tag: DUPLICATE]
+PASS 8 — DUPLICATE DETECTION [tag: DUPLICATE]
 Using the EXISTING CODEBASE above:
 - Component functionally identical to an existing one
 - 70%+ structural overlap — should be a prop/variant instead
@@ -211,7 +321,7 @@ Using the EXISTING CODEBASE above:
 - Reinventing a component from the project's own UI library
 - API fetch logic duplicated — should be a shared service or hook
 
-PASS 8 — NON-FATALS & SILENT FAILURES [tag: NON-FATAL]
+PASS 9 — NON-FATALS & SILENT FAILURES [tag: NON-FATAL]
 All frameworks:
 - Race condition between concurrent async calls — no AbortController
 - Missing loading/null guard before accessing async data
@@ -228,7 +338,22 @@ Next.js specific:
 - Cookie set without httpOnly/secure flags on sensitive values
 - fetch() response not checked for ok before parsing JSON
 
-PASS 9 — NAMING & STYLE [tag: STYLE]
+PASS 10 — UNDECLARED & MISSING REFERENCES [tag: UNDECLARED]
+- Variable or constant used but never declared or imported in this file
+- Prop used inside component but not listed in the props interface or destructured params
+- Function called but never defined or imported
+- Hook used but not imported from react (useState, useEffect, useMemo etc)
+- Component rendered in JSX but never imported
+- Type or interface used but never declared or imported
+- Constant referenced but defined in a different scope or file without import
+- Destructured variable that doesn't exist on the object:
+    const { foo } = user  — but user has no foo property based on its type/usage
+- Default export used as named import or vice versa
+- Package imported but not installed — not in package.json dependencies
+- Import path that doesn't match actual file structure (wrong relative path)
+- Re-exported variable from a barrel file that doesn't actually export it
+
+PASS 11 — NAMING & STYLE [tag: STYLE]
 - Vague names: data, info, res, val, temp, handleStuff
 - Boolean not named as predicate: loading → isLoading, modal → isModalOpen
 - Comment explains WHAT instead of WHY
@@ -255,10 +380,13 @@ Fix:
 \`\`\`
 
 Severity:
-  🔴 BLOCK   — security or crash risk. Commit rejected.
-  🟡 WARN    — performance regression or logic bug. Must fix.
-  🔵 SUGGEST — better way to write it. Educational.
-  ⚪ STYLE   — naming, dead code, readability.
+  🔴 BLOCK      — security or crash risk. Commit rejected.
+  🟡 WARN       — performance regression or logic bug. Must fix.
+  🔵 SUGGEST    — better way to write it. Educational.
+  🟠 CONVENTION — team has a standard for this. Use it.
+  🟣 WRONG_PKG  — wrong package for this framework. Will crash or not work.
+  🔍 UNDECLARED — variable, prop, or import missing or never declared.
+  ⚪ STYLE      — naming, dead code, readability.
 
 Rules:
 - Group by PASS heading
@@ -271,7 +399,7 @@ REVIEW_METADATA_START
 {
   "has_blockers": false,
   "new_patterns_found": ["short description of any new recurring issue type"],
-  "categories_flagged": ["SECURITY","CRASH","HYDRATION","NEXTJS","PERF","SUGGEST","DUPLICATE","NON-FATAL","STYLE"],
+  "categories_flagged": ["SECURITY","CRASH","HYDRATION","NEXTJS","CONVENTION","WRONG_PKG","UNDECLARED","PERF","SUGGEST","DUPLICATE","NON-FATAL","STYLE"],
   "top_issue": "one sentence — the single most important thing to fix"
 }
 REVIEW_METADATA_END`;
