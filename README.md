@@ -6,7 +6,7 @@
 
 Runs on every `git commit`. Catches crashes, ANRs, hydration errors, security holes, and bad patterns before they hit production. Gets smarter with every commit by learning your team's specific blind spots.
 
-[![npm version](https://img.shields.io/npm/v/ai-senior-dev-reviewer.svg)](https://www.npmjs.com/package/ai-senior-dev-reviewer)
+[![npm version](https://img.shields.io/npm/v/ai-commit-reviewer.svg)](https://www.npmjs.com/package/ai-commit-reviewer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen)](https://nodejs.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -78,29 +78,53 @@ Fix:
 
 ## What it catches
 
-### 9 review passes on every commit
+### 11 review passes on every commit
 
 | Pass | Category | Examples |
 |------|----------|---------|
 | 1 | **Security** | Hardcoded secrets, unencrypted token storage, missing API auth, XSS, SQL injection |
-| 2 | **Crashes** | Null deref, unhandled rejections, infinite loops, FlatList-in-ScrollView, missing cleanup |
-| 3 | **ANRs & Perf** | JS thread blocking, missing memo, O(n²) loops, no debounce, ScrollView for large lists |
-| 4 | **Hydration** | Server/client mismatch, window in SSR, useLayoutEffect, invalid HTML nesting, dynamic() missing |
-| 5 | **Next.js** | Missing auth on API routes, Server/Client component misuse, redirect() in try/catch, missing Suspense |
-| 6 | **Better code** | 40-line functions, nested ternaries, no early returns, sequential awaits |
-| 7 | **Duplicates** | Component already exists, util already in utils/, hook already extracted |
-| 8 | **Non-fatals** | Race conditions, double form submit, stale closures, network errors swallowed |
-| 9 | **Style** | Vague names, magic numbers, dead code, missing boolean predicates |
+| 2 | **Crashes** | Null deref, unhandled rejections, infinite loops, FlatList-in-ScrollView, number in `<Text>` |
+| 3 | **ANRs & Perf** | JS thread blocking, multiple useMemos that could be one, O(n²) loops, no debounce |
+| 4 | **Hydration** | Server/client mismatch, window in SSR, useLayoutEffect, invalid HTML nesting |
+| 5 | **Next.js** | Missing auth on API routes, Server/Client misuse, redirect() in try/catch, missing Suspense |
+| 6 | **Conventions** | Raw `<Text>` when team has `AppText`, raw fetch when team has API client, hardcoded colors |
+| 7 | **Better code** | 40-line functions, nested ternaries, scattered `?.` instead of destructuring at top |
+| 8 | **Duplicates** | Component already exists, util already in utils/, hook already extracted |
+| 9 | **Non-fatals** | Race conditions, double form submit, stale closures, network errors swallowed |
+| 10 | **Undeclared** | Variable used but never declared, prop not in interface, component never imported |
+| 11 | **Style** | Vague names, magic numbers, dead code, missing boolean predicates |
 
 ### Framework-aware
 
 Automatically detects which framework you're using and applies the right checks:
 
-**React Native** — ANR risks, JS bridge overload, `useNativeDriver`, `FlatList` vs `ScrollView`, `Platform.OS` guards, permission checks, `react-native-keychain`, `react-native-fast-image`
+**React Native** — ANR risks, JS bridge overload, `useNativeDriver`, `FlatList` vs `ScrollView`, `Platform.OS` guards, permission checks, number/boolean inside `<Text>`, `react-native-keychain`, `react-native-fast-image`
 
 **Next.js** — Hydration mismatches, Server vs Client component misuse, `redirect()` gotchas, `useSearchParams` without Suspense, missing `loading.tsx` / `error.tsx`, ISR revalidation, `next/image`, `next/font`
 
 **React web** — Bundle splitting, virtualisation, error boundaries, SSR guards, `dangerouslySetInnerHTML`
+
+### Codebase convention enforcement
+
+The reviewer scans your existing codebase before every review and learns your team's standards:
+
+- Has a custom `AppText` wrapper? → flags raw `<Text>` usage
+- Has a custom `AppButton`? → flags raw `<TouchableOpacity>`
+- Has `colors.ts` tokens? → flags hardcoded hex values
+- Has `spacing.ts`? → flags magic numbers in StyleSheet
+- Has an API client wrapper? → flags raw `fetch()` calls
+
+It enforces **your team's conventions**, not generic ones.
+
+### Wrong package detection
+
+Using a React Native package in a Next.js file? It catches that too:
+
+```
+🟣 WRONG_PKG containers/Payment/index.tsx:3
+Problem: react-native StyleSheet imported in a Next.js file
+Risk: Will crash at runtime — StyleSheet does not exist in web React
+```
 
 ---
 
@@ -139,6 +163,8 @@ After 10 commits it knows your codebase. After 50 it knows your team.
 | ANR detection | ✗ | ✗ | ✗ | ✓ |
 | Hydration error detection | ✗ | ✗ | ✗ | ✓ |
 | Self-improving memory | ✗ | ✗ | ✗ | ✓ |
+| Codebase convention enforcement | ✗ | ✗ | partial | ✓ |
+| Wrong package detection | ✗ | ✗ | ✗ | ✓ |
 | Duplicate component detection | ✗ | partial | ✗ | ✓ |
 | Works at commit time | ✗ | ✗ (PR only) | ✓ | ✓ |
 | Before/after code fixes | ✗ | partial | ✗ | ✓ |
@@ -160,18 +186,18 @@ After 10 commits it knows your codebase. After 50 it knows your team.
 - Git
 - An API key (OpenAI, Anthropic, or Google Gemini)
 
-### Global install (works across all your projects)
+### Install from npm (recommended)
 
 ```bash
-# Clone somewhere permanent
-git clone https://github.com/your-username/ai-senior-dev-reviewer.git ~/tools/ai-reviewer
-cd ~/tools/ai-reviewer
-npm link
+npm install -g ai-commit-reviewer
 ```
 
-Or install from npm:
+### Or clone and link
+
 ```bash
-npm install -g ai-senior-dev-reviewer
+git clone https://github.com/sagnik2001/ai-senior-dev-reviewer.git ~/tools/ai-reviewer
+cd ~/tools/ai-reviewer
+npm link
 ```
 
 ### Per-project setup
@@ -261,7 +287,7 @@ All settings can be overridden via environment variables or by editing `src/conf
 | `OPENAI_API_KEY` | — | OpenAI API key |
 | `ANTHROPIC_API_KEY` | — | Anthropic API key |
 | `GEMINI_API_KEY` | — | Google Gemini API key |
-| `AI_REVIEWER_MODEL` | auto | Override the model (e.g. `gpt-4o`, `claude-3-5-sonnet-20241022`) |
+| `AI_REVIEWER_MODEL` | auto | Override the model (e.g. `gpt-4o`, `claude-3-5-haiku-20241022`) |
 | `AI_REVIEWER_VERBOSE` | false | Show provider, model, env path info |
 
 ---
@@ -272,6 +298,9 @@ All settings can be overridden via environment variables or by editing `src/conf
 |--|-------|-----------|
 | 🔴 | **BLOCK** | Security vulnerability or crash/ANR risk — commit is rejected |
 | 🟡 | **WARN** | Performance or logic bug — commit allowed, fix before merging |
+| 🟠 | **CONVENTION** | Team has a standard for this — use it |
+| 🟣 | **WRONG_PKG** | Wrong package for this framework — will crash or not work |
+| 🔍 | **UNDECLARED** | Variable, prop, or import missing or never declared |
 | 🔵 | **SUGGEST** | Better way to write it — educational, non-blocking |
 | ⚪ | **STYLE** | Naming, dead code, readability — non-blocking |
 
@@ -286,7 +315,7 @@ ai-senior-dev-reviewer/
 │   ├── config.js             — configuration + env loading
 │   ├── analyzer/
 │   │   ├── git.js            — staged files, diff, codebase snapshot
-│   │   ├── prompt.js         — 9-pass review prompt
+│   │   ├── prompt.js         — 11-pass review prompt
 │   │   └── api.js            — multi-provider AI client (OpenAI/Anthropic/Gemini)
 │   ├── memory/
 │   │   └── index.js          — patterns.json, blind spots, audit log
